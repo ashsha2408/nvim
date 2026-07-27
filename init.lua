@@ -99,7 +99,7 @@ do
   vim.g.maplocalleader = ' '
 
   -- Set to true if you have a Nerd Font installed and selected in the terminal
-  vim.g.have_nerd_font = false
+  vim.g.have_nerd_font = true
 
   -- [[ Setting options ]]
   --  See `:help vim.o`
@@ -141,7 +141,7 @@ do
   vim.o.updatetime = 250
 
   -- Decrease mapped sequence wait time
-  vim.o.timeoutlen = 300
+  vim.o.timeoutlen = 1000
 
   -- Configure how new splits should be opened
   vim.o.splitright = true
@@ -218,6 +218,31 @@ do
   -- NOTE: This won't work in all terminal emulators/tmux/etc. Try your own mapping
   -- or just use <C-\><C-n> to exit terminal mode
   vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
+
+  -- Toggle a persistent terminal in a horizontal split, VS Code style.
+  -- Reuses the same terminal buffer/window across toggles instead of spawning a new shell each time.
+  local term_state = { buf = nil, win = nil }
+  vim.keymap.set({ 'n', 't' }, '<leader>tt', function()
+    if term_state.win and vim.api.nvim_win_is_valid(term_state.win) then
+      vim.api.nvim_win_close(term_state.win, false)
+      term_state.win = nil
+      return
+    end
+
+    if term_state.buf and vim.api.nvim_buf_is_valid(term_state.buf) then
+      vim.cmd.split()
+      term_state.win = vim.api.nvim_get_current_win()
+      vim.api.nvim_win_set_buf(term_state.win, term_state.buf)
+    else
+      vim.cmd.split()
+      vim.cmd.terminal()
+      term_state.buf = vim.api.nvim_get_current_buf()
+      term_state.win = vim.api.nvim_get_current_win()
+    end
+
+    vim.api.nvim_win_set_height(term_state.win, 15)
+    vim.cmd.startinsert()
+  end, { desc = '[T]oggle [T]erminal' })
 
   -- TIP: Disable arrow keys in normal mode
   -- vim.keymap.set('n', '<left>', '<cmd>echo "Use h to move!!"<CR>')
@@ -371,6 +396,7 @@ do
     spec = {
       { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
       { '<leader>t', group = '[T]oggle' },
+      { '<leader>a', group = '[A]I', mode = { 'n', 'v' } },
       { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
       { 'gr', group = 'LSP Actions', mode = { 'n' } },
     },
@@ -694,7 +720,7 @@ do
   local servers = {
     -- clangd = {},
     -- gopls = {},
-    -- pyright = {},
+    pyright = {},
     -- rust_analyzer = {},
     --
     -- Some languages (like typescript) have entire language plugins that can be useful:
@@ -953,7 +979,81 @@ do
 end
 
 -- ============================================================
--- SECTION 10: OPTIONAL EXAMPLES / NEXT STEPS
+-- SECTION 10: AI ASSISTANT (chat + inline edits, multiple backends)
+-- ============================================================
+do
+  -- codecompanion.nvim: like Continue.dev, but for Neovim. Talks to whichever
+  -- backend you pick — no lock-in to one vendor.
+  --   claude_code : reuses your existing Claude Code login (no separate billing)
+  --   ollama      : fully local, uses models already pulled on this machine
+  vim.pack.add { gh 'olimorris/codecompanion.nvim' }
+  require('codecompanion').setup {
+    adapters = {
+      acp = {
+        claude_code = function()
+          return require('codecompanion.adapters').extend('claude_code', {
+            env = { CLAUDE_CODE_OAUTH_TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN' },
+          })
+        end,
+      },
+      http = {
+        ollama = function()
+          return require('codecompanion.adapters').extend('ollama', {
+            schema = { model = { default = 'qwen3-coder:30b' } },
+          })
+        end,
+      },
+    },
+    strategies = {
+      chat = { adapter = 'claude_code' },
+      inline = { adapter = 'ollama' },
+    },
+  }
+
+  vim.keymap.set('n', '<leader>aa', '<cmd>CodeCompanionChat Toggle<cr>', { desc = '[A]I: Toggle Ch[a]t' })
+  vim.keymap.set({ 'n', 'v' }, '<leader>ai', ':CodeCompanion<space>', { desc = '[A]I: [I]nline prompt' })
+  vim.keymap.set('v', '<leader>aa', '<cmd>CodeCompanionChat Add<cr>', { desc = '[A]I: Add selection to chat' })
+end
+
+-- ============================================================
+-- SECTION 11: GHOST-TEXT COMPLETION (Copilot-style, as you type)
+-- ============================================================
+do
+  -- Different job to everything in Section 10: this predicts and shows gray
+  -- "ghost text" continuously as you type, with no prompt needed — exactly
+  -- what GitHub Copilot/Codeium did. Deliberately uses a small, fast, LOCAL
+  -- model (not Claude Code or the big qwen3-coder:30b) because this fires on
+  -- nearly every keystroke and needs to feel instant.
+  vim.pack.add { gh 'milanglacier/minuet-ai.nvim' }
+  require('minuet').setup {
+    provider = 'openai_fim_compatible',
+    n_completions = 1,
+    context_window = 1024,
+    provider_options = {
+      openai_fim_compatible = {
+        api_key = 'TERM', -- unused by Ollama, but the field is required
+        name = 'Ollama',
+        end_point = 'http://localhost:11434/v1/completions',
+        model = 'qwen2.5-coder:1.5b-base',
+        optional = { max_tokens = 56, top_p = 0.9 },
+      },
+    },
+    virtualtext = {
+      -- Add more filetypes here as you work in other languages.
+      auto_trigger_ft = { 'python', 'lua' },
+      keymap = {
+        accept = '<C-l>',
+        accept_line = '<C-j>',
+        next = '<C-Down>',
+        prev = '<C-Up>',
+        dismiss = '<C-]>',
+      },
+    },
+  }
+end
+
+-- ============================================================
+-- SECTION 12: OPTIONAL EXAMPLES / NEXT STEPS
 -- kickstart.plugins.* examples
 -- ============================================================
 do
