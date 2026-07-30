@@ -107,10 +107,10 @@ do
   --  For more options, you can see `:help option-list`
 
   -- Make line numbers default
-  vim.o.number = true
+  -- vim.o.number = true
   -- You can also add relative line numbers, to help with jumping.
   --  Experiment for yourself to see if you like it!
-  -- vim.o.relativenumber = true
+  vim.o.relativenumber = true
 
   -- Enable mouse mode, can be useful for resizing splits for example!
   vim.o.mouse = 'a'
@@ -397,6 +397,7 @@ do
       { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
       { '<leader>t', group = '[T]oggle' },
       { '<leader>a', group = '[A]I', mode = { 'n', 'v' } },
+      { '<leader>b', group = '[B]uffer' },
       { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
       { 'gr', group = 'LSP Actions', mode = { 'n' } },
     },
@@ -457,6 +458,12 @@ do
   -- - sd'   - [S]urround [D]elete [']quotes
   -- - sr)'  - [S]urround [R]eplace [)] [']
   require('mini.surround').setup()
+
+  -- Delete a buffer without closing the window/split showing it — plain
+  -- `:bd` closes the window too if the fallback buffer is already open
+  -- elsewhere. This always keeps your split layout intact.
+  require('mini.bufremove').setup()
+  vim.keymap.set('n', '<leader>bd', function() require('mini.bufremove').delete(0, false) end, { desc = '[B]uffer [D]elete (keeps split open)' })
 
   -- Simple and easy statusline.
   --  You could remove this setup call if you don't like it,
@@ -1050,6 +1057,11 @@ do
       },
     },
   }
+
+  -- Toggle ghost-text on/off for the current buffer without touching config.
+  -- Buffer-local by design (mini/minuet convention) — flip it per-buffer if
+  -- it's distracting you in one file but you still want it elsewhere.
+  vim.keymap.set('n', '<leader>tg', function() require('minuet.virtualtext').action.toggle_auto_trigger() end, { desc = '[T]oggle [G]host text' })
 end
 
 -- ============================================================
