@@ -736,8 +736,6 @@ do
     -- But for many setups, the LSP (`ts_ls`) will work just fine
     -- ts_ls = {},
 
-    stylua = {}, -- Used to format Lua code
-
     -- Special Lua Config, as recommended by neovim help docs
     lua_ls = {
       on_init = function(client)
@@ -792,10 +790,18 @@ do
   -- You can press `g?` for help in this menu.
   local ensure_installed = vim.tbl_keys(servers or {})
   vim.list_extend(ensure_installed, {
+    'stylua', -- Lua formatter (driven by conform, not an LSP)
     -- You can add other tools here that you want Mason to install
   })
 
-  require('mason-tool-installer').setup { ensure_installed = ensure_installed }
+  -- On NixOS, Mason's prebuilt binaries (e.g. lua-language-server) fail on the
+  -- non-FHS filesystem. There these tools are installed via Nix (configuration.nix)
+  -- and discovered on PATH, so skip Mason auto-install. Other platforms (macOS,
+  -- etc.) keep the normal Mason-managed behavior.
+  local is_nixos = vim.fn.filereadable '/etc/NIXOS' == 1
+  require('mason-tool-installer').setup {
+    ensure_installed = is_nixos and {} or ensure_installed,
+  }
 
   for name, server in pairs(servers) do
     vim.lsp.config(name, server)
@@ -829,6 +835,7 @@ do
     },
     -- You can also specify external formatters in here.
     formatters_by_ft = {
+      lua = { 'stylua' },
       -- rust = { 'rustfmt' },
       -- Conform can also run multiple formatters sequentially
       -- python = { "isort", "black" },
@@ -986,13 +993,13 @@ do
 end
 
 -- ============================================================
--- SECTION 10: AI ASSISTANT (chat + inline edits, multiple backends)
+-- SECTION 10: AI ASSISTANT (Claude, via CodeCompanion)
 -- ============================================================
 do
-  -- codecompanion.nvim: like Continue.dev, but for Neovim. Talks to whichever
-  -- backend you pick — no lock-in to one vendor.
-  --   claude_code : reuses your existing Claude Code login (no separate billing)
-  --   ollama      : fully local, uses models already pulled on this machine
+  -- codecompanion.nvim talking to Claude Code over ACP — reuses your existing
+  -- Claude Code login (needs CLAUDE_CODE_OAUTH_TOKEN in the environment), so no
+  -- separate API key or billing. Claude is the only backend; both the chat and
+  -- inline strategies use it.
   vim.pack.add { gh 'olimorris/codecompanion.nvim' }
   require('codecompanion').setup {
     adapters = {
@@ -1003,17 +1010,10 @@ do
           })
         end,
       },
-      http = {
-        ollama = function()
-          return require('codecompanion.adapters').extend('ollama', {
-            schema = { model = { default = 'qwen3-coder:30b' } },
-          })
-        end,
-      },
     },
     strategies = {
       chat = { adapter = 'claude_code' },
-      inline = { adapter = 'ollama' },
+      inline = { adapter = 'claude_code' },
     },
   }
 
@@ -1023,49 +1023,7 @@ do
 end
 
 -- ============================================================
--- SECTION 11: GHOST-TEXT COMPLETION (Copilot-style, as you type)
--- ============================================================
-do
-  -- Different job to everything in Section 10: this predicts and shows gray
-  -- "ghost text" continuously as you type, with no prompt needed — exactly
-  -- what GitHub Copilot/Codeium did. Deliberately uses a small, fast, LOCAL
-  -- model (not Claude Code or the big qwen3-coder:30b) because this fires on
-  -- nearly every keystroke and needs to feel instant.
-  vim.pack.add { gh 'milanglacier/minuet-ai.nvim' }
-  require('minuet').setup {
-    provider = 'openai_fim_compatible',
-    n_completions = 1,
-    context_window = 1024,
-    provider_options = {
-      openai_fim_compatible = {
-        api_key = 'TERM', -- unused by Ollama, but the field is required
-        name = 'Ollama',
-        end_point = 'http://localhost:11434/v1/completions',
-        model = 'qwen2.5-coder:1.5b-base',
-        optional = { max_tokens = 56, top_p = 0.9 },
-      },
-    },
-    virtualtext = {
-      -- Add more filetypes here as you work in other languages.
-      auto_trigger_ft = { 'python', 'lua' },
-      keymap = {
-        accept = '<C-l>',
-        accept_line = '<C-j>',
-        next = '<C-Down>',
-        prev = '<C-Up>',
-        dismiss = '<C-]>',
-      },
-    },
-  }
-
-  -- Toggle ghost-text on/off for the current buffer without touching config.
-  -- Buffer-local by design (mini/minuet convention) — flip it per-buffer if
-  -- it's distracting you in one file but you still want it elsewhere.
-  vim.keymap.set('n', '<leader>tg', function() require('minuet.virtualtext').action.toggle_auto_trigger() end, { desc = '[T]oggle [G]host text' })
-end
-
--- ============================================================
--- SECTION 12: OPTIONAL EXAMPLES / NEXT STEPS
+-- SECTION 11: OPTIONAL EXAMPLES / NEXT STEPS
 -- kickstart.plugins.* examples
 -- ============================================================
 do
@@ -1080,7 +1038,7 @@ do
   --
   -- require 'kickstart.plugins.debug'
   -- require 'kickstart.plugins.indent_line'
-  -- require 'kickstart.plugins.lint'
+  require 'kickstart.plugins.lint'
   -- require 'kickstart.plugins.autopairs'
   -- require 'kickstart.plugins.neo-tree'
   -- require 'kickstart.plugins.gitsigns' -- adds gitsigns recommended keymaps
